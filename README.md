@@ -1,3 +1,14 @@
+# RIP OFF NOTICE
+
+This is https://gitlab.com/afandian/pipes-and-paper.git ported for
+remarkable 2 with a very big axe, hardcoding some paths for myself,
+and adding image refresh through resnap[resnap]
+
+[resnap] https://github.com/reHackable/scripts/wiki/resnap.sh
+
+Use for reference or don't use at all.
+
+
 # Remarkable Tablet Canvas
 
 Very simple tool to draw pen input to a browser window for sharing. Runs on the desktop, nothing to install on the ReMarkable.

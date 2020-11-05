@@ -3,6 +3,7 @@ import functools
 import http
 import json
 import os
+import time
 import subprocess
 
 import websockets
@@ -28,6 +29,21 @@ def check(rm_hostname):
         os._exit(1)
 
 
+async def refresh_ss(refresh):
+    now = time.time()
+    try:
+        if os.stat("resnap.jpg").st_mtime >= now - refresh:
+            return
+    except FileNotFoundError:
+        pass
+    try:
+        print("running resnap")
+        subprocess.run(['../scripts/host/resnap.sh', 'resnap.new.jpg'], check=True)
+        os.rename('resnap.new.jpg', 'resnap.jpg')
+        print("ok")
+    except subprocess.CalledProcessError:
+        print("Could not resnap, continuing anyway")
+
 async def websocket_handler(websocket, path, rm_host, rm_model):
     if rm_model == "reMarkable 1.0":
         device = "/dev/input/event0"
@@ -42,6 +58,9 @@ async def websocket_handler(websocket, path, rm_host, rm_model):
     x = 0
     y = 0
     pressure = 0
+    eraser = False
+    refresh_task = None
+    refresh_id = 0
 
     proc = await asyncio.create_subprocess_shell(
         command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -51,7 +70,7 @@ async def websocket_handler(websocket, path, rm_host, rm_model):
     try:
         # Keep looping as long as the process is alive.
         # Terminated websocket connection is handled with a throw.
-        while proc.returncode == None:
+        while proc.returncode is None:
             buf = await proc.stdout.read(16)
 
             # TODO expect 16-bit chunks, or no data.
@@ -69,16 +88,40 @@ async def websocket_handler(websocket, path, rm_host, rm_model):
                 code = b[2] + b[3] * 0x100
                 val = c[0] + c[1] * 0x100 + c[2] * 0x10000 + c[3] * 0x1000000
 
+
+                # print("Type %d, code %d, val %d" % (typ, code, val))
+                # Pen side
+                if typ == 1:
+                    # code = 320 = normal, 321 = erase
+                    # val = 0 = off, 1 = closes in
+                    # resend picture on 321 off?
+                    if code == 321:
+                        if val == 1:
+                            eraser = True
+                            if refresh_task is None:
+                                refresh_task = asyncio.create_task(refresh_ss(3))
+                            print("eraser on")
+                        else:
+                            eraser = False
+                            if refresh_task is not None:
+                                await refresh_task
+                                refresh_task = None
+                                refresh_id += 1
+                            print("eraser off")
+                            await websocket.send(json.dumps(("redraw", refresh_id)))
+
+                # 0= 20966, 1 = 15725
                 # Absolute position.
                 if typ == 3:
                     if code == 0:
-                        x = val
-                    elif code == 1:
                         y = val
+                    elif code == 1:
+                        x = val
                     elif code == 24:
                         pressure = val
 
-                    await websocket.send(json.dumps((x, y, pressure)))
+                    if not eraser:
+                        await websocket.send(json.dumps((x, y, pressure)))
         print("Disconnected from ReMarkable.")
 
     finally:
@@ -86,11 +129,22 @@ async def websocket_handler(websocket, path, rm_host, rm_model):
         proc.kill()
 
 
+async def screenshot(request):
+    await refresh_ss(60)
+    body = open("resnap.jpg", "rb").read()
+    headers = [
+        ("Content-Type", "image/jpeg"),
+        ("Content-Length", str(len(body))),
+        ("Connection", "close"),
+    ]
+    return (http.HTTPStatus.OK, headers, body)
+
 async def http_handler(path, request):
     # only serve index file or defer to websocket handler.
     if path == "/websocket":
         return None
-
+    elif path.startswith("/screenshot"):
+        return await screenshot(request)
     elif path != "/":
         return (http.HTTPStatus.NOT_FOUND, [], "")
 
@@ -105,7 +159,8 @@ async def http_handler(path, request):
 
 
 def run(rm_host="remarkable", host="localhost", port=6789):
-    rm_model = check(rm_host)
+    # rm_model = check(rm_host)
+    rm_model = "reMarkable 2.0"
     bound_handler = functools.partial(
         websocket_handler, rm_host=rm_host, rm_model=rm_model
     )

@@ -2,15 +2,16 @@
 <html>
 <head>
     <title>Remarkable Canvas Experiment</title>
-    <canvas width="1176" height="750" id="canvas-overlay" style="border: 1px solid #aaa; position: absolute; left: 10; right; 10"></canvas>
-    <canvas width="1176" height="750" id="canvas" style="border: 1px solid #aaa; position: absolute; left: 10; right; 10 "></canvas>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-type" />
+    <canvas width="702" height="936" id="canvas-overlay" style="border: 1px solid #aaa; position: absolute; left: 10; right; 10"></canvas>
+    <canvas width="702" height="936" id="canvas" style="border: 1px solid #aaa; position: absolute; left: 10; right; 10 "></canvas>
 </head>
 <body>
 <script>
 
 // Thanks https://github.com/ichaozi/RemarkableFramebuffer
-var MAX_X = 11277;
-var MAX_Y = 7509;
+var MAX_X = 15725;
+var MAX_Y = 20966;
 var RATIO = MAX_X / MAX_Y;
 var MAX_PRESSURE = 4095;
 var MAX_DISPLAY_PRESSURE = 10;
@@ -28,10 +29,10 @@ var ctxOverlay = canvasOverlay.getContext("2d");
 // Stroke only for drawing, fill only for debug.
 ctx.lineWidth = 2;
 
-let websocket = new WebSocket("ws://" + location.host + "/websocket");
+let websocket = new WebSocket(location.protocol.replace(/^http/, 'ws') + "//" + location.host + "/websocket");
 
-let scaleX = canvas.width / MAX_X / 2;
-let scaleY = canvas.height / MAX_Y / 2;
+let scaleX = canvas.width / MAX_X;
+let scaleY = canvas.height / MAX_Y;
 let scalePressure = MAX_DISPLAY_PRESSURE / MAX_PRESSURE;
 
 let penState = false;
@@ -47,6 +48,12 @@ let debug = false;
 
 let lastX = null;
 let lastY = null;
+
+let img = new Image();
+img.onload = function() {
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+}
+img.src = "screenshot?id=-1";
 
 function draw() {
   // Loop through ringbuffer elements...
@@ -109,6 +116,16 @@ websocket.onmessage = function(event) {
   // data is [x, y, pressure]
   let data = JSON.parse(event.data);
 
+  if (data[0] == "redraw") {
+    img = new Image();
+    img.onload = function() {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    }
+    img.src = "screenshot?id=" + data[1];
+    return;
+  }
+
+  data[1] = MAX_Y - data[1];
   // Pre-increment rbI so we can use it in draw to refer to the current head.
   rbI = (rbI + 1) % RINGBUFFER_SIZE;
   ringbufferX[rbI] = data[0];
