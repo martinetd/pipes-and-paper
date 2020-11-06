@@ -58,6 +58,7 @@ async def websocket_handler(websocket, path, rm_host, rm_model):
     x = 0
     y = 0
     pressure = 0
+    throttle = 0
     eraser = False
     refresh_task = None
     refresh_id = 0
@@ -120,7 +121,8 @@ async def websocket_handler(websocket, path, rm_host, rm_model):
                     elif code == 24:
                         pressure = val
 
-                    if not eraser:
+                    throttle = throttle + 1
+                    if not eraser and throttle % 3 == 0:
                         await websocket.send(json.dumps((x, y, pressure)))
         print("Disconnected from ReMarkable.")
 
