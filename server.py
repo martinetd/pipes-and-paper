@@ -122,7 +122,7 @@ async def websocket_handler(websocket, path, rm_host, rm_model):
                         pressure = val
 
                     throttle = throttle + 1
-                    if not eraser and throttle % 3 == 0:
+                    if not eraser and throttle % 6 == 0:
                         await websocket.send(json.dumps((x, y, pressure)))
         print("Disconnected from ReMarkable.")
 
