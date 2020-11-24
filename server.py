@@ -105,11 +105,12 @@ class WebsocketHandler():
                     print("pagechange watcher return code %s: " % proc.returncode,
                             stderr.decode())
                     break
-                now = time.time()
-                if now - last > 2:
-                    print("page change")
-                    await self.websocket_broadcast(json.dumps(("redraw",)))
-                    last = now
+                if b'metadata' in buf:
+                    now = time.time()
+                    if now - last > 2:
+                        print("page change")
+                        await self.websocket_broadcast(json.dumps(("redraw",)))
+                        last = now
             print("Disconnected from ReMarkable.")
 
         finally:
