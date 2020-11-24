@@ -21,6 +21,8 @@ var RINGBUFFER_SIZE = 10;
 var rotate = false;
 
 var canvas = document.getElementById("canvas");
+var width = canvas.width;
+var height = canvas.height;
 var ctx = canvas.getContext("2d");
 
 var canvasOverlay = document.getElementById("canvas-overlay");
@@ -29,10 +31,10 @@ var ctxOverlay = canvasOverlay.getContext("2d");
 // Stroke only for drawing, fill only for debug.
 ctx.lineWidth = 2;
 
-let websocket = new WebSocket(location.protocol.replace(/^http/, 'ws') + "//" + location.host + "/websocket");
+let websocket = new WebSocket(location.href.replace(/^http/, 'ws') + (location.href.endsWith('/') ? "" : "/") + "websocket");
 
-let scaleX = canvas.width / MAX_X;
-let scaleY = canvas.height / MAX_Y;
+let scaleX = width / MAX_X;
+let scaleY = height / MAX_Y;
 let scalePressure = MAX_DISPLAY_PRESSURE / MAX_PRESSURE;
 
 let penState = false;
@@ -51,7 +53,7 @@ let lastY = null;
 
 let img = new Image();
 img.onload = function() {
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, width, height);
 }
 img.src = "screenshot?id=-1";
 
@@ -105,7 +107,7 @@ function draw() {
 function overlay(x, y) {
   // Clear when hovering, but keep drawing for the duration of a stroke to highlight it.
   if (!penState) {
-    ctxOverlay.clearRect(0,0,canvasOverlay.width,canvasOverlay.height);  
+    ctxOverlay.clearRect(0,0,width,height);
   }
   ctxOverlay.fillStyle = "rgb(200, 200, 255)";
   ctxOverlay.beginPath();
@@ -119,7 +121,7 @@ websocket.onmessage = function(event) {
   if (data[0] == "redraw") {
     img = new Image();
     img.onload = function() {
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, width, height);
     }
     img.src = "screenshot?id=" + data[1];
     return;
@@ -151,10 +153,25 @@ function logKey(e) {
   if (e.keyCode == 13) {
     // enter for rotate
     rotate = !rotate;
-
-    let oldWidth = canvas.width;
-    canvas.width = canvas.height;
-    canvas.height = oldWidth
+    if (rotate) {
+      canvas.width = height;
+      canvasOverlay.width = height;
+      canvas.height = width;
+      canvasOverlay.height = width;
+      ctx.translate(canvas.width, 0);
+      ctxOverlay.translate(canvas.width, 0);
+      ctx.rotate(Math.PI / 2);
+      ctxOverlay.rotate(Math.PI / 2);
+    } else {
+      canvas.width = width;
+      canvasOverlay.width = width;
+      canvas.height = height;
+      canvasOverlay.height = height;
+      ctx.translate(0, 0);
+      ctxOverlay.translate(0, 0);
+      ctx.rotate(0);
+      ctxOverlay.rotate(0);
+    }
   } else if (e.keyCode == 32) {
     // Space for clear.
     canvas.width = canvas.width;
