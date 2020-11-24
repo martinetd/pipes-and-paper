@@ -94,10 +94,16 @@ class WebsocketHandler():
         try:
             last = time.time()
             while proc.returncode is None:
-                msg = await proc.stdout.read(1000)
-                if not msg:
-                    await proc.wait()
-                    print("pagechange watcher return code %s" % proc.returncode)
+                buf = await proc.stdout.read(1000)
+
+                if not buf:
+                    try:
+                        await asyncio.wait_for(proc.wait(), 1)
+                    except TimeoutError:
+                        continue
+                    stderr = await proc.stderr.read(1000)
+                    print("pagechange watcher return code %s: " % proc.returncode,
+                            stderr.decode())
                     break
                 now = time.time()
                 if now - last > 2:
@@ -108,8 +114,8 @@ class WebsocketHandler():
 
         finally:
             print("Disconnected from all.")
-            self.running = False
-            proc.kill()
+            if proc.returncode is None:
+                proc.kill()
 
     async def ssh_stream(self):
         # The async subprocess library only accepts a string command, not a list.
@@ -131,6 +137,13 @@ class WebsocketHandler():
             # Terminated websocket connection is handled with a throw.
             while proc.returncode is None:
                 buf = await proc.stdout.read(16)
+
+                if not buf:
+                    try:
+                        await asyncio.wait_for(proc.wait(), 1)
+                    except TimeoutError:
+                        continue
+                    break
 
                 # TODO expect 16-bit chunks, or no data.
                 # There are synchronisation signals in the data stream, maybe use those
@@ -181,7 +194,8 @@ class WebsocketHandler():
         finally:
             print("Disconnected from all.")
             self.running = False
-            proc.kill()
+            if proc.returncode is None:
+                proc.kill()
 
 
 
