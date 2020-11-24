@@ -86,8 +86,6 @@ class WebsocketHandler():
         pressure = 0
         throttle = 0
         eraser = False
-        refresh_task = None
-        refresh_id = 0
 
         self.proc = await asyncio.create_subprocess_shell(
             command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -125,17 +123,11 @@ class WebsocketHandler():
                         if code == 321:
                             if val == 1:
                                 eraser = True
-                                if refresh_task is None:
-                                    refresh_task = asyncio.create_task(refresh_ss(3))
                                 print("eraser on")
                             else:
                                 eraser = False
-                                if refresh_task is not None:
-                                    await refresh_task
-                                    refresh_task = None
-                                    refresh_id += 1
                                 print("eraser off")
-                                await self.websocket_broadcast(json.dumps(("redraw", refresh_id)))
+                                await self.websocket_broadcast(json.dumps(("redraw",)))
 
                     # 0= 20966, 1 = 15725
                     # Absolute position.
@@ -162,8 +154,11 @@ class WebsocketHandler():
             await self.proc.wait()
 
 
-async def screenshot(request):
-    await refresh_ss(60)
+async def screenshot(path, request):
+    cachetime=3
+    if path.endswith("id=0"):
+        cachetime=60
+    await refresh_ss(cachetime)
     body = open("resnap.jpg", "rb").read()
     headers = [
         ("Content-Type", "image/jpeg"),
@@ -177,7 +172,7 @@ async def http_handler(path, request):
     if path == "/websocket":
         return None
     elif path.startswith("/screenshot"):
-        return await screenshot(request)
+        return await screenshot(path, request)
     elif path != "/":
         return (http.HTTPStatus.NOT_FOUND, [], "")
 

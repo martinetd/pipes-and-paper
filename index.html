@@ -51,11 +51,16 @@ let debug = false;
 let lastX = null;
 let lastY = null;
 
-let img = new Image();
-img.onload = function() {
-  ctx.drawImage(img, 0, 0, width, height);
+var redrawID = 0;
+
+function redraw() {
+  let img = new Image();
+  img.onload = function() {
+    ctx.drawImage(img, 0, 0, width, height);
+  }
+  img.src = "screenshot?id=" + redrawID++;
 }
-img.src = "screenshot?id=-1";
+redraw();
 
 function draw() {
   // Loop through ringbuffer elements...
@@ -119,11 +124,7 @@ websocket.onmessage = function(event) {
   let data = JSON.parse(event.data);
 
   if (data[0] == "redraw") {
-    img = new Image();
-    img.onload = function() {
-      ctx.drawImage(img, 0, 0, width, height);
-    }
-    img.src = "screenshot?id=" + data[1];
+    redraw();
     return;
   }
 
@@ -172,10 +173,10 @@ function logKey(e) {
       ctx.rotate(0);
       ctxOverlay.rotate(0);
     }
+    redraw();
   } else if (e.keyCode == 32) {
-    // Space for clear.
-    canvas.width = canvas.width;
-    e.preventDefault();
+    // Space for redraw.
+    redraw();
   } else if (e.keyCode == 68) {
     // 'd' for debug
     debug = !debug;
