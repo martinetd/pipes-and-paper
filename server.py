@@ -73,9 +73,10 @@ class WebsocketHandler():
         self.websockets.append(websocket)
         if not self.running:
             self.running = True
-            await self.ssh_handler()
-        else:
-            await self.join()
+            await asyncio.create_task(self.ssh_handler())
+        while True:
+            msg = await websocket.recv()
+            print(f"got {msg}")
 
     async def ssh_handler(self):
         # The async subprocess library only accepts a string command, not a list.
