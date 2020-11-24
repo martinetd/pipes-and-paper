@@ -175,6 +175,7 @@ class WebsocketHandler():
 
                         throttle = throttle + 1
                         if not eraser and throttle % 6 == 0:
+                            print(x, y, pressure)
                             await self.websocket_broadcast(json.dumps((x, y, pressure)))
             print("Disconnected from ReMarkable.")
 
