@@ -200,9 +200,9 @@ class WebsocketHandler():
 
 
 async def screenshot(path, request):
-    cachetime=3
+    cachetime=2
     if path.endswith("id=0"):
-        cachetime=60
+        cachetime=30
     await refresh_ss(cachetime)
     body = open("resnap.jpg", "rb").read()
     headers = [
