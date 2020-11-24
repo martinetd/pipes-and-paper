@@ -73,12 +73,45 @@ class WebsocketHandler():
         self.websockets.append(websocket)
         if not self.running:
             self.running = True
-            await asyncio.create_task(self.ssh_handler())
+            t1 = asyncio.create_task(self.ssh_stream())
+            t2 = asyncio.create_task(self.ssh_pagechange())
+            t3 = asyncio.create_task(self.read_websocket(websocket))
+            await asyncio.gather(t1, t2, t3)
+        else:
+            await self.read_websocket(websocket)
+
+    async def read_websocket(self, websocket):
         while True:
             msg = await websocket.recv()
             print(f"got {msg}")
 
-    async def ssh_handler(self):
+    async def ssh_pagechange(self):
+        command = f"ssh -o ConnectTimeout=2 {self.rm_host} /opt/bin/inotifywait -m -e CLOSE .local/share/remarkable/xochitl/"
+        proc = await asyncio.create_subprocess_shell(
+            command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        print("Started pagechange watcher process")
+        try:
+            last = time.time()
+            while proc.returncode is None:
+                msg = await proc.stdout.read(1000)
+                if not msg:
+                    await proc.wait()
+                    print("pagechange watcher return code %s" % proc.returncode)
+                    break
+                now = time.time()
+                if now - last > 2:
+                    print("page change")
+                    await self.websocket_broadcast(json.dumps(("redraw",)))
+                    last = now
+            print("Disconnected from ReMarkable.")
+
+        finally:
+            print("Disconnected from all.")
+            self.running = False
+            proc.kill()
+
+    async def ssh_stream(self):
         # The async subprocess library only accepts a string command, not a list.
         command = f"ssh -o ConnectTimeout=2 {self.rm_host} cat {self.device}"
 
@@ -88,16 +121,16 @@ class WebsocketHandler():
         throttle = 0
         eraser = False
 
-        self.proc = await asyncio.create_subprocess_shell(
+        proc = await asyncio.create_subprocess_shell(
             command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        print("Started process")
+        print("Started event stream process")
 
         try:
             # Keep looping as long as the process is alive.
             # Terminated websocket connection is handled with a throw.
-            while self.proc.returncode is None:
-                buf = await self.proc.stdout.read(16)
+            while proc.returncode is None:
+                buf = await proc.stdout.read(16)
 
                 # TODO expect 16-bit chunks, or no data.
                 # There are synchronisation signals in the data stream, maybe use those
@@ -148,11 +181,8 @@ class WebsocketHandler():
         finally:
             print("Disconnected from all.")
             self.running = False
-            self.proc.kill()
+            proc.kill()
 
-    async def join(self):
-        if self.proc:
-            await self.proc.wait()
 
 
 async def screenshot(path, request):
