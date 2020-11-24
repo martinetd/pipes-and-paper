@@ -5,6 +5,7 @@ import json
 import os
 import time
 import subprocess
+import sys
 
 import websockets
 
@@ -251,13 +252,26 @@ def run():
             '-n', '--no-autorefresh', dest='autorefresh', default=True,
             action="store_false",
             help='trigger refresh on page change etc')
+    parser.add_argument(
+            '--auth', type=str, help='basic user:pass auth')
     args = parser.parse_args()
     # rm_model = check(rm_host)
     rm_model = "reMarkable 2.0"
     handler = WebsocketHandler(args.rm_host, rm_model, args)
+    create_protocol = None
+    if args.auth:
+        creds = args.auth.split(':')
+        if len(creds) != 2:
+            print('--auth arg must be of form user:pass')
+            sys.exit(1)
+        create_protocol = websockets.basic_auth_protocol_factory(
+            realm="remarkable stream",
+            credentials=tuple(creds),
+        )
     start_server = websockets.serve(
         handler.websocket_handler, args.server_host, args.port,
-        ping_interval=1000, process_request=http_handler
+        ping_interval=1000, process_request=http_handler,
+        create_protocol=create_protocol
     )
 
     print(f"Visit http://{args.server_host}:{args.port}/")
