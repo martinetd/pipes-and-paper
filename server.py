@@ -242,7 +242,7 @@ def run():
             '-r', '--rm_host', default='remarkable',
             help='remarkable host')
     parser.add_argument(
-            '-h', '--server_host', default='localhost',
+            '-s', '--server_host', default='localhost',
             help='websocket server listen host')
     parser.add_argument(
             '-p', '--port', default=6789,
