@@ -45,6 +45,8 @@ async def refresh_ss(refresh):
         print("ok")
     except subprocess.CalledProcessError:
         print("Could not resnap, continuing anyway")
+    except FileNotFoundError:
+        print("resnap ran but file not created? continuing anyway...")
 
 
 class WebsocketHandler():
@@ -65,11 +67,8 @@ class WebsocketHandler():
         for websocket in self.websockets:
             try:
                 await websocket.send(msg)
-            except:
-                print("Client closed")
-                self.websockets.remove(websocket)
-                if not self.websockets:
-                    raise EOFError
+            except Exception as e:
+                print("send error, meh:", repr(e))
 
 
     async def websocket_handler(self, websocket, path):
@@ -86,9 +85,13 @@ class WebsocketHandler():
             await self.read_websocket(websocket)
 
     async def read_websocket(self, websocket):
-        while True:
-            msg = await websocket.recv()
-            print(f"got {msg}")
+        try:
+            while True:
+                msg = await websocket.recv()
+                print(f"got {msg}")
+        except websockets.exceptions.ConnectionClosedOK:
+            print("Disconnecting client")
+            self.websockets.remove(websocket)
 
     async def ssh_pagechange(self):
         command = f"ssh -o ConnectTimeout=2 {self.rm_host} /opt/bin/inotifywait -m -e CLOSE .local/share/remarkable/xochitl/"
@@ -115,10 +118,9 @@ class WebsocketHandler():
                         time.sleep(0.5)
                         await self.websocket_broadcast(json.dumps(("redraw",)))
                         last = now
-            print("Disconnected from ReMarkable.")
 
         finally:
-            print("Disconnected from all.")
+            print("pagechange watcher stopped.")
             if proc.returncode is None:
                 proc.kill()
 
@@ -195,10 +197,9 @@ class WebsocketHandler():
                         if not eraser and throttle % 6 == 0:
                             await self.websocket_broadcast(
                                     json.dumps((x, y, pressure)))
-            print("Disconnected from ReMarkable.")
 
         finally:
-            print("Disconnected from all.")
+            print("stream event task stopped.")
             self.running = False
             if proc.returncode is None:
                 proc.kill()
