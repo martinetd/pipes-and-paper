@@ -1,5 +1,5 @@
 import asyncio
-import functools
+import argparse
 import http
 import json
 import os
@@ -46,7 +46,7 @@ async def refresh_ss(refresh):
 
 
 class WebsocketHandler():
-    def __init__(self, rm_host, rm_model):
+    def __init__(self, rm_host, rm_model, args):
         if rm_model == "reMarkable 1.0":
             self.device = "/dev/input/event0"
         elif rm_model == "reMarkable 2.0":
@@ -55,6 +55,7 @@ class WebsocketHandler():
             raise NotImplementedError(f"Unsupported reMarkable Device : {rm_model}")
 
         self.rm_host = rm_host
+        self.args = args
         self.websockets = []
         self.running = False
 
@@ -73,10 +74,12 @@ class WebsocketHandler():
         self.websockets.append(websocket)
         if not self.running:
             self.running = True
-            t1 = asyncio.create_task(self.ssh_stream())
-            t2 = asyncio.create_task(self.ssh_pagechange())
-            t3 = asyncio.create_task(self.read_websocket(websocket))
-            await asyncio.gather(t1, t2, t3)
+            tasks = []
+            tasks.append(asyncio.create_task(self.ssh_stream()))
+            if self.args.autorefresh:
+                tasks.append(asyncio.create_task(self.ssh_pagechange()))
+            tasks.append(asyncio.create_task(self.read_websocket(websocket)))
+            await asyncio.gather(*tasks)
         else:
             await self.read_websocket(websocket)
 
@@ -232,16 +235,31 @@ async def http_handler(path, request):
     return (http.HTTPStatus.OK, headers, body)
 
 
-def run(rm_host="remarkable", host="localhost", port=6789):
+def run():
+    parser = argparse.ArgumentParser(
+            description='stream remarkable')
+    parser.add_argument(
+            '-r', '--rm_host', default='remarkable',
+            help='remarkable host')
+    parser.add_argument(
+            '-h', '--server_host', default='localhost',
+            help='websocket server listen host')
+    parser.add_argument(
+            '-p', '--port', default=6789,
+            help='websocket server port')
+    parser.add_argument(
+            '-n', '--no-autorefresh', dest='autorefresh', default=True, action="store_false",
+            help='trigger refresh on page change etc')
+    args = parser.parse_args()
     # rm_model = check(rm_host)
     rm_model = "reMarkable 2.0"
-    handler = WebsocketHandler(rm_host, rm_model)
+    handler = WebsocketHandler(args.rm_host, rm_model, args)
     start_server = websockets.serve(
-        handler.websocket_handler, host, port, ping_interval=1000,
-        process_request=http_handler
+        handler.websocket_handler, args.server_host, args.port,
+        ping_interval=1000, process_request=http_handler
     )
 
-    print(f"Visit http://{host}:{port}/")
+    print(f"Visit http://{args.server_host}:{args.port}/")
 
     asyncio.get_event_loop().run_until_complete(start_server)
     asyncio.get_event_loop().run_forever()
