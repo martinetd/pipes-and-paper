@@ -38,7 +38,8 @@ async def refresh_ss(refresh):
         pass
     try:
         print("running resnap")
-        subprocess.run(['../scripts/host/resnap.sh', 'resnap.new.jpg'], check=True)
+        subprocess.run(['../scripts/host/resnap.sh', 'resnap.new.jpg'],
+                       check=True)
         os.rename('resnap.new.jpg', 'resnap.jpg')
         print("ok")
     except subprocess.CalledProcessError:
@@ -91,7 +92,7 @@ class WebsocketHandler():
     async def ssh_pagechange(self):
         command = f"ssh -o ConnectTimeout=2 {self.rm_host} /opt/bin/inotifywait -m -e CLOSE .local/share/remarkable/xochitl/"
         proc = await asyncio.create_subprocess_shell(
-            command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            command, stdout=asyncio.subprocess.PIPE
         )
         print("Started pagechange watcher process")
         try:
@@ -104,9 +105,7 @@ class WebsocketHandler():
                         await asyncio.wait_for(proc.wait(), 1)
                     except TimeoutError:
                         continue
-                    stderr = await proc.stderr.read(1000)
-                    print("pagechange watcher return code %s: " % proc.returncode,
-                            stderr.decode())
+                    print(f"pagechange watcher return code {proc.returncode}")
                     break
                 if b'metadata' in buf:
                     now = time.time()
@@ -132,7 +131,7 @@ class WebsocketHandler():
         eraser = False
 
         proc = await asyncio.create_subprocess_shell(
-            command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            command, stdout=asyncio.subprocess.PIPE
         )
         print("Started event stream process")
 
@@ -164,7 +163,6 @@ class WebsocketHandler():
                     code = b[2] + b[3] * 0x100
                     val = c[0] + c[1] * 0x100 + c[2] * 0x10000 + c[3] * 0x1000000
 
-
                     # print("Type %d, code %d, val %d" % (typ, code, val))
                     # Pen side
                     if typ == 1:
@@ -178,7 +176,8 @@ class WebsocketHandler():
                             else:
                                 eraser = False
                                 print("eraser off")
-                                await self.websocket_broadcast(json.dumps(("redraw",)))
+                                await self.websocket_broadcast(
+                                        json.dumps(("redraw",)))
 
                     # 0= 20966, 1 = 15725
                     # Absolute position.
@@ -192,7 +191,8 @@ class WebsocketHandler():
 
                         throttle = throttle + 1
                         if not eraser and throttle % 6 == 0:
-                            await self.websocket_broadcast(json.dumps((x, y, pressure)))
+                            await self.websocket_broadcast(
+                                    json.dumps((x, y, pressure)))
             print("Disconnected from ReMarkable.")
 
         finally:
@@ -204,9 +204,9 @@ class WebsocketHandler():
 
 
 async def screenshot(path, request):
-    cachetime=2
+    cachetime = 2
     if path.endswith("id=0"):
-        cachetime=30
+        cachetime = 30
     await refresh_ss(cachetime)
     body = open("resnap.jpg", "rb").read()
     headers = [
@@ -220,9 +220,9 @@ async def http_handler(path, request):
     # only serve index file or defer to websocket handler.
     if path == "/websocket":
         return None
-    elif path.startswith("/screenshot"):
+    if path.startswith("/screenshot"):
         return await screenshot(path, request)
-    elif path != "/":
+    if path != "/":
         return (http.HTTPStatus.NOT_FOUND, [], "")
 
     body = open("index.html", "rb").read()
@@ -248,7 +248,8 @@ def run():
             '-p', '--port', default=6789,
             help='websocket server port')
     parser.add_argument(
-            '-n', '--no-autorefresh', dest='autorefresh', default=True, action="store_false",
+            '-n', '--no-autorefresh', dest='autorefresh', default=True,
+            action="store_false",
             help='trigger refresh on page change etc')
     args = parser.parse_args()
     # rm_model = check(rm_host)
