@@ -112,6 +112,7 @@ class WebsocketHandler():
                     now = time.time()
                     if now - last > 2:
                         print("page change")
+                        time.sleep(0.5)
                         await self.websocket_broadcast(json.dumps(("redraw",)))
                         last = now
             print("Disconnected from ReMarkable.")
