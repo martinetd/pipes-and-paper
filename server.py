@@ -44,91 +44,122 @@ async def refresh_ss(refresh):
     except subprocess.CalledProcessError:
         print("Could not resnap, continuing anyway")
 
-async def websocket_handler(websocket, path, rm_host, rm_model):
-    if rm_model == "reMarkable 1.0":
-        device = "/dev/input/event0"
-    elif rm_model == "reMarkable 2.0":
-        device = "/dev/input/event1"
-    else:
-        raise NotImplementedError(f"Unsupported reMarkable Device : {rm_model}")
 
-    # The async subprocess library only accepts a string command, not a list.
-    command = f"ssh -o ConnectTimeout=2 {rm_host} cat {device}"
+class WebsocketHandler():
+    def __init__(self, rm_host, rm_model):
+        if rm_model == "reMarkable 1.0":
+            self.device = "/dev/input/event0"
+        elif rm_model == "reMarkable 2.0":
+            self.device = "/dev/input/event1"
+        else:
+            raise NotImplementedError(f"Unsupported reMarkable Device : {rm_model}")
 
-    x = 0
-    y = 0
-    pressure = 0
-    throttle = 0
-    eraser = False
-    refresh_task = None
-    refresh_id = 0
+        self.rm_host = rm_host
+        self.websockets = []
+        self.running = False
 
-    proc = await asyncio.create_subprocess_shell(
-        command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    print("Started process")
-
-    try:
-        # Keep looping as long as the process is alive.
-        # Terminated websocket connection is handled with a throw.
-        while proc.returncode is None:
-            buf = await proc.stdout.read(16)
-
-            # TODO expect 16-bit chunks, or no data.
-            # There are synchronisation signals in the data stream, maybe use those
-            # if we drift somehow.
-            if len(buf) == 16:
-                timestamp = buf[0:4]
-                a = buf[4:8]
-                b = buf[8:12]
-                c = buf[12:16]
-
-                # Using notes from https://github.com/ichaozi/RemarkableFramebuffer
-                # or https://github.com/canselcik/libremarkable/wiki
-                typ = b[0]
-                code = b[2] + b[3] * 0x100
-                val = c[0] + c[1] * 0x100 + c[2] * 0x10000 + c[3] * 0x1000000
+    async def websocket_broadcast(self, msg):
+        for websocket in self.websockets:
+            try:
+                await websocket.send(msg)
+            except:
+                print("Client closed")
+                self.websockets.remove(websocket)
+                if not self.websockets:
+                    raise EOFError
 
 
-                # print("Type %d, code %d, val %d" % (typ, code, val))
-                # Pen side
-                if typ == 1:
-                    # code = 320 = normal, 321 = erase
-                    # val = 0 = off, 1 = closes in
-                    # resend picture on 321 off?
-                    if code == 321:
-                        if val == 1:
-                            eraser = True
-                            if refresh_task is None:
-                                refresh_task = asyncio.create_task(refresh_ss(3))
-                            print("eraser on")
-                        else:
-                            eraser = False
-                            if refresh_task is not None:
-                                await refresh_task
-                                refresh_task = None
-                                refresh_id += 1
-                            print("eraser off")
-                            await websocket.send(json.dumps(("redraw", refresh_id)))
+    async def websocket_handler(self, websocket, path):
+        self.websockets.append(websocket)
+        if not self.running:
+            self.running = True
+            await self.ssh_handler()
+        else:
+            await self.join()
 
-                # 0= 20966, 1 = 15725
-                # Absolute position.
-                if typ == 3:
-                    if code == 0:
-                        y = val
-                    elif code == 1:
-                        x = val
-                    elif code == 24:
-                        pressure = val
+    async def ssh_handler(self):
+        # The async subprocess library only accepts a string command, not a list.
+        command = f"ssh -o ConnectTimeout=2 {self.rm_host} cat {self.device}"
 
-                    throttle = throttle + 1
-                    if not eraser and throttle % 6 == 0:
-                        await websocket.send(json.dumps((x, y, pressure)))
-        print("Disconnected from ReMarkable.")
+        x = 0
+        y = 0
+        pressure = 0
+        throttle = 0
+        eraser = False
+        refresh_task = None
+        refresh_id = 0
 
-    finally:
-        print("Disconnected from browser.")
-        proc.kill()
+        self.proc = await asyncio.create_subprocess_shell(
+            command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        print("Started process")
+
+        try:
+            # Keep looping as long as the process is alive.
+            # Terminated websocket connection is handled with a throw.
+            while self.proc.returncode is None:
+                buf = await self.proc.stdout.read(16)
+
+                # TODO expect 16-bit chunks, or no data.
+                # There are synchronisation signals in the data stream, maybe use those
+                # if we drift somehow.
+                if len(buf) == 16:
+                    timestamp = buf[0:4]
+                    a = buf[4:8]
+                    b = buf[8:12]
+                    c = buf[12:16]
+
+                    # Using notes from https://github.com/ichaozi/RemarkableFramebuffer
+                    # or https://github.com/canselcik/libremarkable/wiki
+                    typ = b[0]
+                    code = b[2] + b[3] * 0x100
+                    val = c[0] + c[1] * 0x100 + c[2] * 0x10000 + c[3] * 0x1000000
+
+
+                    # print("Type %d, code %d, val %d" % (typ, code, val))
+                    # Pen side
+                    if typ == 1:
+                        # code = 320 = normal, 321 = erase
+                        # val = 0 = off, 1 = closes in
+                        # resend picture on 321 off?
+                        if code == 321:
+                            if val == 1:
+                                eraser = True
+                                if refresh_task is None:
+                                    refresh_task = asyncio.create_task(refresh_ss(3))
+                                print("eraser on")
+                            else:
+                                eraser = False
+                                if refresh_task is not None:
+                                    await refresh_task
+                                    refresh_task = None
+                                    refresh_id += 1
+                                print("eraser off")
+                                await self.websocket_broadcast(json.dumps(("redraw", refresh_id)))
+
+                    # 0= 20966, 1 = 15725
+                    # Absolute position.
+                    if typ == 3:
+                        if code == 0:
+                            y = val
+                        elif code == 1:
+                            x = val
+                        elif code == 24:
+                            pressure = val
+
+                        throttle = throttle + 1
+                        if not eraser and throttle % 6 == 0:
+                            await self.websocket_broadcast(json.dumps((x, y, pressure)))
+            print("Disconnected from ReMarkable.")
+
+        finally:
+            print("Disconnected from all.")
+            self.running = False
+            self.proc.kill()
+
+    async def join(self):
+        if self.proc:
+            await self.proc.wait()
 
 
 async def screenshot(request):
@@ -163,11 +194,10 @@ async def http_handler(path, request):
 def run(rm_host="remarkable", host="localhost", port=6789):
     # rm_model = check(rm_host)
     rm_model = "reMarkable 2.0"
-    bound_handler = functools.partial(
-        websocket_handler, rm_host=rm_host, rm_model=rm_model
-    )
+    handler = WebsocketHandler(rm_host, rm_model)
     start_server = websockets.serve(
-        bound_handler, host, port, ping_interval=1000, process_request=http_handler
+        handler.websocket_handler, host, port, ping_interval=1000,
+        process_request=http_handler
     )
 
     print(f"Visit http://{host}:{port}/")
