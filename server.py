@@ -68,8 +68,8 @@ class WebsocketHandler():
             try:
                 await websocket.send(msg)
             except Exception as e:
-                print("send error, meh:", repr(e))
-
+                print("send error: %s ; removing client" % repr(e))
+                await self.websocket_remove(websocket)
 
     async def websocket_handler(self, websocket, path):
         self.websockets.append(websocket)
@@ -84,13 +84,8 @@ class WebsocketHandler():
         else:
             await self.read_websocket(websocket)
 
-    async def read_websocket(self, websocket):
-        try:
-            while True:
-                msg = await websocket.recv()
-                print(f"got {msg}")
-        except websockets.exceptions.ConnectionClosedOK:
-            print("Disconnecting client")
+    async def websocket_remove(self, websocket):
+        if websocket in self.websockets:
             self.websockets.remove(websocket)
             if not self.websockets:
                 if self.pagechange_proc.returncode is None:
@@ -98,6 +93,16 @@ class WebsocketHandler():
                 if self.stream_proc.returncode is None:
                     self.stream_proc.kill()
                 self.running = False
+
+    async def read_websocket(self, websocket):
+        try:
+            while True:
+                msg = await websocket.recv()
+                print(f"got {msg}")
+        except (websockets.exceptions.ConnectionClosedOK,
+                websockets.exceptions.ConnectionClosedError):
+            print("Disconnecting client")
+            await self.websocket_remove(websocket)
 
     async def ssh_pagechange(self):
         command = f"ssh -o ConnectTimeout=2 {self.rm_host} /opt/bin/inotifywait -m -e CLOSE .local/share/remarkable/xochitl/"
